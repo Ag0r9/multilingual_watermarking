@@ -16,6 +16,8 @@ classifiers = [
     
 ]
 dependencies = [
+    "accelerate>=1.6.0",
+    "bitsandbytes>=0.45.5",
     "ipython",
     "jupyterlab",
     "matplotlib",
@@ -23,10 +25,14 @@ dependencies = [
     "numpy",
     "pandas",
     "pip",
+    "protobuf>=6.30.2",
     "pytest",
     "python-dotenv",
     "ruff",
     "scikit-learn",
+    "sentencepiece>=0.2.0",
+    "torch>=2.7.0",
+    "transformers>=4.51.3",
 ]
 requires-python = "~=3.10.0"
 
