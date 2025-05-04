@@ -29,14 +29,14 @@ clean:
 ## Lint using ruff (use `make format` to do formatting)
 .PHONY: lint
 lint:
-	ruff format --check
-	ruff check
+	uvx ruff format --check
+	uvx ruff check
 
 ## Format source code with ruff
 .PHONY: format
 format:
-	ruff check --fix
-	ruff format
+	uvx ruff check --fix
+	uvx ruff format
 
 
 
