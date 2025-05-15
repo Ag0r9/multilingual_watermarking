@@ -4,6 +4,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, LogitsProcessorLis
 from multilingual_watermarking.ForceStringLogitsProcessor import ForceStringLogitsProcessor
 
 model_name = "speakleash/Bielik-7B-Instruct-v0.1"
+expand_output = True
 
 print(f"Loading model: {model_name}")
 # Check for GPU availability
@@ -16,7 +17,6 @@ model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloa
 
 # --- Configure Generation ---
 prompt_text = "Pogoda w Warszawie jest"
-# The string we want to force *after* the prompt
 target_string_to_force = " słoneczna i cudowna. Wspaniały dzień na spacer."
 
 # Set pad token if not present (common for GPT-2)
@@ -42,7 +42,6 @@ print(f"Forced Tokens: {forced_tokens}")
 start_index = len(prompt_tokens) - 1
 
 # --- Create the Logits Processor ---
-# We want to start forcing immediately after the prompt
 force_processor = ForceStringLogitsProcessor(
     target_string=target_string_to_force,
     tokenizer=tokenizer,
@@ -53,11 +52,10 @@ force_processor = ForceStringLogitsProcessor(
 logits_processor_list = LogitsProcessorList([force_processor])
 
 # --- Generate Text ---
-# Ensure max_new_tokens is long enough to accommodate the forced string
-# and potentially some free generation afterwards.
+additional_tokens = 20 if expand_output else -1
 target_token_count = len(force_processor.target_token_ids)
 min_required_length = target_token_count
-max_length_to_generate = prompt_length + min_required_length + 20  # Force + 20 extra tokens
+max_length_to_generate = prompt_length + min_required_length + additional_tokens
 
 print("\nStarting generation...")
 print(f"Prompt: '{prompt_text}'")
