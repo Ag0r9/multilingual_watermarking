@@ -21,6 +21,7 @@ dependencies = [
     "ipython",
     "jupyterlab",
     "matplotlib",
+    "nltk>=3.9.1",
     "notebook",
     "numpy",
     "pandas",
