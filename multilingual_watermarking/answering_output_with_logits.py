@@ -1,5 +1,8 @@
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, LogitsProcessorList
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from multilingual_watermarking.logit_modification import LogitModificationTracker, generate_output_with_logits
+
 
 model_name = "speakleash/Bielik-7B-Instruct-v0.1"
 
@@ -25,38 +28,38 @@ encoded_prompt = tokenizer(prompt_text, return_tensors="pt", padding=True, trunc
 input_ids = encoded_prompt["input_ids"].to(device)
 attention_mask = encoded_prompt["attention_mask"].to(device)
 
-def generate_output_with_logits(model, generated, attention_mask):
-    """
-    Generate output from the model and return logits.
-    """
-    outputs = model(input_ids=generated, attention_mask=attention_mask)
-    next_token_logits = outputs.logits[:, -1, :]
-    next_token_id = torch.argmax(next_token_logits, dim=-1).unsqueeze(-1)
-    generated = torch.cat([generated, next_token_id], dim=-1)
-    # Update attention mask
-    attention_mask = torch.cat(
-        [attention_mask, torch.ones((attention_mask.shape[0], 1), device=device, dtype=attention_mask.dtype)],
-        dim=1
-    )
-    return generated, attention_mask, next_token_id, next_token_logits
-    
+# Initialize the tracker
+tracker = LogitModificationTracker()
 
 # Generate tokens step by step in a loop
 generated = input_ids
 model.eval()
 with torch.no_grad():
     for _ in range(100):
-        generated, attention_mask, next_token_id, next_token_logits = generate_output_with_logits(model, generated, attention_mask)
-        next_token_logits = next_token_logits / 2
+        generated, attention_mask, next_token_id, modified_logits = generate_output_with_logits(
+            model,
+            device,
+            generated,
+            attention_mask,
+            tracker,
+        )
+        
         # Stop if EOS token is generated
         if next_token_id.item() == tokenizer.eos_token_id:
             break
 
         output_text = tokenizer.decode(generated[0], skip_special_tokens=True)
-        print(f"Next token ID: {next_token_id.item()}")
-        print(f"Next token logits: {next_token_logits}")
-        print(f"Generated text so far: {output_text}")
+        print(f"\nGenerated text so far: {output_text}")
+        
+        # Print token information
+        token_info = tracker.token_history[-1]
+        print(f"Token ID: {token_info['token_id']}")
+        print(f"Original logit: {token_info['original_logits'].max().item():.4f}")
+        print(f"Modified logit: {token_info['modified_logits'].max().item():.4f}")
 
-# Decode and print the generated text
+# Final output
 output_text = tokenizer.decode(generated[0], skip_special_tokens=True)
-print(output_text)
+print("\nFinal output:", output_text)
+
+# You can access the complete history of tokens and their logits through:
+history = tracker.get_history()
