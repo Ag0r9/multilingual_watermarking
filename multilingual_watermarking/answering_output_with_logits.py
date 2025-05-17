@@ -1,8 +1,10 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from multilingual_watermarking.logit_modification import LogitModificationTracker, generate_output_with_logits
-
+from multilingual_watermarking.logit_modification import (
+    LogitModificationTracker,
+    generate_output_with_logits,
+)
 
 model_name = "speakleash/Bielik-7B-Instruct-v0.1"
 
@@ -43,14 +45,14 @@ with torch.no_grad():
             attention_mask,
             tracker,
         )
-        
+
         # Stop if EOS token is generated
         if next_token_id.item() == tokenizer.eos_token_id:
             break
 
         output_text = tokenizer.decode(generated[0], skip_special_tokens=True)
         print(f"\nGenerated text so far: {output_text}")
-        
+
         # Print token information
         token_info = tracker.token_history[-1]
         print(f"Token ID: {token_info['token_id']}")
