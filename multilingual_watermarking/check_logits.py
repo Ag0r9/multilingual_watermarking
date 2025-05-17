@@ -4,6 +4,8 @@ import torch.nn.functional as F
 
 
 def calculate_sequence_probability(text: str, model, tokenizer, device) -> tuple[float, list[dict]]:
+    #TODO: zamiast probability zwrócić logit
+    #TODO: logitsy pomiędzy check_logits a answer_with_logits są różne. Sprawdź dlaczego
     """
     Calculate the probability of generating a specific sequence of tokens and return token-wise probabilities.
     
