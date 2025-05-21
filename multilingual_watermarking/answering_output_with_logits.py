@@ -5,6 +5,7 @@ from multilingual_watermarking.logit_modification import (
     LogitModificationTracker,
     generate_output_with_logits,
 )
+from multilingual_watermarking.paths import Paths
 
 model_name = "speakleash/Bielik-7B-Instruct-v0.1"
 
@@ -37,13 +38,14 @@ tracker = LogitModificationTracker()
 generated = input_ids
 model.eval()
 with torch.no_grad():
-    for _ in range(100):
+    for pos in range(100):
         generated, attention_mask, next_token_id, modified_logits = generate_output_with_logits(
             model,
             device,
             generated,
             attention_mask,
             tracker,
+            position=pos,
         )
 
         # Stop if EOS token is generated
@@ -59,9 +61,16 @@ with torch.no_grad():
         print(f"Original logit: {token_info['original_logits'].max().item():.4f}")
         print(f"Modified logit: {token_info['modified_logits'].max().item():.4f}")
 
+paths = Paths()
 # Final output
 output_text = tokenizer.decode(generated[0], skip_special_tokens=True)
 print("\nFinal output:", output_text)
-
-# You can access the complete history of tokens and their logits through:
-history = tracker.get_history()
+file_name = paths.GENERATED_TEXT_DIR / "output.txt"
+# Save the output to a file
+# Ensure the directory exists
+paths.GENERATED_TEXT_DIR.mkdir(parents=True, exist_ok=True)
+with open(file_name, "w", encoding="utf-8") as f:
+    f.write(output_text)
+print("Output saved to ", file_name)
+# Save the logits to a CSV file
+tracker.save_history_to_csv()
