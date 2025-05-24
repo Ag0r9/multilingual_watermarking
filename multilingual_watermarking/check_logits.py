@@ -32,22 +32,29 @@ def calculate_sequence_probability(
     # For each position in the sequence
     for i in range(len(tokens)):
         # Get the input sequence up to the current position
-        input_tokens = tokens[: i + 1]
+        input_tokens = tokens[: i]
         encoded = tokenizer(
             tokenizer.decode(input_tokens), return_tensors="pt", padding=True, truncation=True
         )
         input_ids = encoded["input_ids"].to(device)
         attention_mask = encoded["attention_mask"].to(device)
 
-        _, _, _, _ = generate_output_with_logits(
-            model=model,
-            device=device,
-            generated=input_ids,
-            attention_mask=attention_mask,
-            tracker=tracker,
+        with torch.no_grad():
+            outputs = model(input_ids, attention_mask=attention_mask)
+            
+        # Get logits for the last token
+        logits = outputs.logits[0, -1, :]
+        
+        # Get logit of the actual next token
+        target_token = tokens[i]
+        
+        tracker.add_token_info(
+            token_id=target_token,
+            original_logits=logits[target_token],
+            modified_logits=logits[target_token],
             position=i,
         )
-
+    
     tracker.save_history_to_csv()
     return
 

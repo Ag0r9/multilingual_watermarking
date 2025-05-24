@@ -76,7 +76,7 @@ def generate_output_with_logits(
     original_logits = outputs.logits[:, -1, :]
 
     # Modify logits
-    modified_logits = multiple_logits(original_logits, 1)
+    modified_logits = multiple_logits(original_logits, 0.5)
 
     # Get next token based on modified logits
     next_token_id = torch.argmax(modified_logits, dim=-1).unsqueeze(-1)
