@@ -18,6 +18,7 @@ classifiers = [
 dependencies = [
     "accelerate>=1.6.0",
     "bitsandbytes>=0.45.5",
+    "huggingface-hub[cli]>=0.30.2",
     "ipython",
     "jupyterlab",
     "matplotlib",
@@ -29,6 +30,7 @@ dependencies = [
     "protobuf>=6.30.2",
     "pytest",
     "python-dotenv",
+    "pyyaml>=6.0.2",
     "ruff",
     "scikit-learn",
     "sentencepiece>=0.2.0",

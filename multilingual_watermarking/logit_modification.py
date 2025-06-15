@@ -61,6 +61,8 @@ def multiple_logits(logits: torch.Tensor, multiplication_factor: float = 0.5) ->
     return logits * multiplication_factor
 
 
+
+
 def generate_output_with_logits(
     model,
     device: torch.device,

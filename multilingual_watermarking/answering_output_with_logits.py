@@ -1,11 +1,35 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
+import yaml
 
 from multilingual_watermarking.logit_modification import (
     LogitModificationTracker,
     generate_output_with_logits,
 )
 from multilingual_watermarking.paths import Paths
+
+promts = [
+    "Napisz jeden paragraf tekstu na temat historii pizzy.",
+    "Napisz jeden paragraf tekstu na temat Wielkiego Muru Chińskiego.",
+    "Napisz jeden paragraf tekstu na temat wpływu muzyki na nastrój.",
+    "Napisz jeden paragraf tekstu na temat życia pszczół w ulu.",
+    "Napisz jeden paragraf tekstu na temat Układu Słonecznego.",
+    "Napisz jeden paragraf tekstu na temat korzyści płynących z regularnego czytania książek.",
+    "Napisz jeden paragraf tekstu na temat funkcjonowania silnika spalinowego.",
+    "Napisz jeden paragraf tekstu na temat procesu fotosyntezy.",
+    "Napisz jeden paragraf tekstu na temat starożytnego Egiptu.",
+    "Napisz jeden paragraf tekstu na temat znaczenia wody dla życia na Ziemi.",
+    "Napisz jeden paragraf tekstu na temat tego, jak powstają wulkany.",
+    "Napisz jeden paragraf tekstu na temat historii igrzysk olimpijskich.",
+    "Napisz jeden paragraf tekstu na temat budowy i funkcji ludzkiego serca.",
+    "Napisz jeden paragraf tekstu na temat Internetu i jego wpływu na społeczeństwo.",
+    "Napisz jeden paragraf tekstu na temat przyczyn i skutków zmiany klimatu.",
+    "Napisz jeden paragraf tekstu na temat życia i twórczości Marii Skłodowskiej-Curie.",
+    "Napisz jeden paragraf tekstu na temat Amazonii, największego lasu deszczowego na świecie.",
+    "Napisz jeden paragraf tekstu na temat rozwoju sztucznej inteligencji.",
+    "Napisz jeden paragraf tekstu na temat cyklu życia motyla.",
+    "Napisz jeden paragraf tekstu na temat roli witamin w diecie człowieka.",
+]
 
 model_name = "speakleash/Bielik-7B-Instruct-v0.1"
 
@@ -14,12 +38,16 @@ print(f"Loading model: {model_name}")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
+paths = Paths()
+
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16).to(device)
 
 beginning_prompt = "Odpowiadaj krótko, precyzyjnie i wyłącznie w języku polskim. "
 
-prompt_text = beginning_prompt + "Pogoda w Warszawie jest"
+prompt_text = promts[0]
+
+prompt_text = beginning_prompt + prompt_text
 
 # Set pad token if not present (common for GPT-2)
 if tokenizer.pad_token is None:
@@ -38,7 +66,7 @@ tracker = LogitModificationTracker()
 generated = input_ids
 model.eval()
 with torch.no_grad():
-    for pos in range(100):
+    for pos in range(1000):
         generated, attention_mask, next_token_id, modified_logits = generate_output_with_logits(
             model,
             device,
@@ -61,7 +89,6 @@ with torch.no_grad():
         print(f"Original logit: {token_info['original_logits'].max().item():.4f}")
         print(f"Modified logit: {token_info['modified_logits'].max().item():.4f}")
 
-paths = Paths()
 # Final output
 output_text = tokenizer.decode(generated[0], skip_special_tokens=True)
 print("\nFinal output:", output_text)
