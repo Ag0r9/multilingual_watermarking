@@ -1,14 +1,22 @@
+"""
+Module for generating text with logit tracking and watermarking capabilities.
+This module provides functionality to generate text while tracking and modifying logits
+for watermarking purposes.
+"""
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-import yaml
+from pathlib import Path
+from typing import Tuple, Optional
 
 from multilingual_watermarking.logit_modification import (
     LogitModificationTracker,
-    generate_output_with_logits,
+    LogitModifier
 )
 from multilingual_watermarking.paths import Paths
 
-promts = [
+# Collection of prompts for text generation
+PROMPTS = [
     "Napisz jeden paragraf tekstu na temat historii pizzy.",
     "Napisz jeden paragraf tekstu na temat Wielkiego Muru Chińskiego.",
     "Napisz jeden paragraf tekstu na temat wpływu muzyki na nastrój.",
@@ -31,73 +39,151 @@ promts = [
     "Napisz jeden paragraf tekstu na temat roli witamin w diecie człowieka.",
 ]
 
-model_name = "speakleash/Bielik-7B-Instruct-v0.1"
+# Model configuration
+MODEL_NAME = "speakleash/Bielik-7B-Instruct-v0.1"
+BEGINNING_PROMPT = "Odpowiadaj krótko, precyzyjnie i wyłącznie w języku polskim. "
 
-print(f"Loading model: {model_name}")
-# Check for GPU availability
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
 
-paths = Paths()
+def setup_model_and_tokenizer(
+    model_name: str = MODEL_NAME,
+    device: Optional[str] = None
+) -> Tuple[AutoModelForCausalLM, AutoTokenizer, torch.device]:
+    """
+    Initialize and setup the model and tokenizer.
+    
+    Args:
+        model_name: Name of the model to load
+        device: Device to run the model on (if None, will use CUDA if available)
+        
+    Returns:
+        Tuple containing:
+        - model: The loaded language model
+        - tokenizer: The tokenizer
+        - device: The device being used
+    """
+    device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    print(f"Using device: {device}")
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype=torch.bfloat16
+    ).to(device)
+    
+    # Set pad token if not present
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        model.config.pad_token_id = model.config.eos_token_id
+    
+    return model, tokenizer, device
 
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16).to(device)
 
-beginning_prompt = "Odpowiadaj krótko, precyzyjnie i wyłącznie w języku polskim. "
+def generate_text(
+    prompt: str,
+    model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
+    device: torch.device,
+    tracker: LogitModificationTracker,
+    max_length: int = 1000,
+    watermark_type: str = "multiple_logits"
+) -> str:
+    """
+    Generate text from the model while tracking logits.
+    
+    Args:
+        prompt: The input prompt
+        model: The language model
+        tokenizer: The tokenizer
+        device: The device to run on
+        tracker: The logit modification tracker
+        max_length: Maximum length of generated text
+        
+    Returns:
+        Generated text as string
+    """
+    # Tokenize the prompt
+    encoded_prompt = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
+    input_ids = encoded_prompt["input_ids"].to(device)
+    attention_mask = encoded_prompt["attention_mask"].to(device)
+    
+    # Generate tokens
+    generated = input_ids
+    model.eval()
 
-prompt_text = promts[0]
+    logit_modifier = LogitModifier(tokenizer=tokenizer)
+    with torch.no_grad():
+        for pos in range(max_length):
+            generated, attention_mask, next_token_id, modified_logits = logit_modifier.generate_output_with_logits(
+                model,
+                device,
+                generated,
+                attention_mask,
+                tracker,
+                position=pos,
+                watermark_type=watermark_type,  # Pass watermark type here
+            )
+            
+            # Print progress
+            if pos % 10 == 0:
+                output_text = tokenizer.decode(generated[0], skip_special_tokens=True)
+                print(f"\nGenerated text so far: {output_text}")
+                
+                # Print token information
+                token_info = tracker.token_history[-1]
+                print(f"Token ID: {token_info['token_id']}")
+                print(f"Original logit: {token_info['original_logits'].max().item():.4f}")
+                print(f"Modified logit: {token_info['modified_logits'].max().item():.4f}")
+            
+            # Stop if EOS token is generated
+            if next_token_id.item() == tokenizer.eos_token_id:
+                break
+    
+    return tokenizer.decode(generated[0], skip_special_tokens=True)
 
-prompt_text = beginning_prompt + prompt_text
 
-# Set pad token if not present (common for GPT-2)
-if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token
-    model.config.pad_token_id = model.config.eos_token_id
+def save_output(text: str, file_path: Path) -> None:
+    """
+    Save generated text to a file.
+    
+    Args:
+        text: The text to save
+        file_path: Path where to save the text
+    """
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(text)
+    print(f"Output saved to {file_path}")
 
-# Tokenize the prompt with padding and attention mask
-encoded_prompt = tokenizer(prompt_text, return_tensors="pt", padding=True, truncation=True)
-input_ids = encoded_prompt["input_ids"].to(device)
-attention_mask = encoded_prompt["attention_mask"].to(device)
 
-# Initialize the tracker
-tracker = LogitModificationTracker()
+def main():
+    """Main function to run the text generation process."""
+    print(f"Loading model: {MODEL_NAME}")
+    
+    # Setup model and tokenizer
+    model, tokenizer, device = setup_model_and_tokenizer()
+    paths = Paths()
+    
+    # List of watermark types to iterate over
+    watermark_types = [
+        "multiple_logits",
+        "random_50",
+        "adj_adv_90",
+        "feminine_90",
+        "verb_comp_90"
+    ]
+    
+    for prompt_idx, prompt in enumerate(PROMPTS):
+        prompt_text = BEGINNING_PROMPT + prompt
+        for watermark_type in watermark_types:
+            print(f"\n=== Generating for prompt {prompt_idx} with watermark type: {watermark_type} ===")
+            tracker = LogitModificationTracker()
+            output_text = generate_text(
+                prompt_text, model, tokenizer, device, tracker, max_length=1000, watermark_type=watermark_type
+            )
+            # Save results
+            output_file = paths.GENERATED_TEXT_DIR / f"output_{prompt_idx}_{watermark_type}.txt"
+            save_output(output_text, output_file)
+            tracker.save_history_to_csv(f"{prompt_idx}_{watermark_type}")
 
-# Generate tokens step by step in a loop
-generated = input_ids
-model.eval()
-with torch.no_grad():
-    for pos in range(1000):
-        generated, attention_mask, next_token_id, modified_logits = generate_output_with_logits(
-            model,
-            device,
-            generated,
-            attention_mask,
-            tracker,
-            position=pos,
-        )
-
-        # Stop if EOS token is generated
-        if next_token_id.item() == tokenizer.eos_token_id:
-            break
-
-        output_text = tokenizer.decode(generated[0], skip_special_tokens=True)
-        print(f"\nGenerated text so far: {output_text}")
-
-        # Print token information
-        token_info = tracker.token_history[-1]
-        print(f"Token ID: {token_info['token_id']}")
-        print(f"Original logit: {token_info['original_logits'].max().item():.4f}")
-        print(f"Modified logit: {token_info['modified_logits'].max().item():.4f}")
-
-# Final output
-output_text = tokenizer.decode(generated[0], skip_special_tokens=True)
-print("\nFinal output:", output_text)
-file_name = paths.GENERATED_TEXT_DIR / "output.txt"
-# Save the output to a file
-# Ensure the directory exists
-paths.GENERATED_TEXT_DIR.mkdir(parents=True, exist_ok=True)
-with open(file_name, "w", encoding="utf-8") as f:
-    f.write(output_text)
-print("Output saved to ", file_name)
-# Save the logits to a CSV file
-tracker.save_history_to_csv()
+if __name__ == "__main__":
+    main()

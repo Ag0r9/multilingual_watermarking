@@ -34,6 +34,7 @@ dependencies = [
     "ruff",
     "scikit-learn",
     "sentencepiece>=0.2.0",
+    "spacy>=3.8.7",
     "torch>=2.7.0",
     "transformers>=4.51.3",
 ]
