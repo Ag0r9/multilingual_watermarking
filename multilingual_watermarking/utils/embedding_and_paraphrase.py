@@ -2,17 +2,18 @@ import os
 from typing import Any, Dict, List
 
 import numpy as np
-import openai
+from openai import OpenAI
 
-openai.api_key = os.getenv("OAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OAI_API_KEY"))
+
 
 def get_embedding(text: str, model: str = "text-embedding-ada-002") -> np.ndarray:
     """
     Get embedding for a given text using a large LLM API (e.g., OpenAI, Gemini).
     """
     # Example using OpenAI (pseudo-code):
-    response = openai.Embedding.create(input=text, model=model)
-    return np.array(response['data'][0]['embedding'])
+    response = client.embeddings.create(input=text, model=model)
+    return np.array(response.data[0].embedding)
     # raise NotImplementedError("Implement embedding retrieval using your chosen LLM API.")
 
 
@@ -30,11 +31,9 @@ def paraphrase_text(text: str, n: int = 5, model: str = "gpt-3.5-turbo") -> List
     # Example using OpenAI Chat API (pseudo-code):
     paraphrases = []
     for _ in range(n):
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=[{"role": "user", "content": f"Paraphrase this text: {text}"}]
-        )
-        paraphrases.append(response['choices'][0]['message']['content'])
+        response = client.chat.completions.create(model=model,
+        messages=[{"role": "user", "content": f"Paraphrase this text: {text}"}])
+        paraphrases.append(response.choices[0].message.content)
     return paraphrases
     # raise NotImplementedError("Implement paraphrasing using your chosen LLM API.")
 
