@@ -1,5 +1,6 @@
 import yaml
 
+
 def read_yaml(file_path):
     """Read a YAML file and return its contents as a Python object."""
     with open(file_path, 'r', encoding='utf-8') as f:

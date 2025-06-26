@@ -25,6 +25,7 @@ dependencies = [
     "nltk>=3.9.1",
     "notebook",
     "numpy",
+    "openai>=1.91.0",
     "pandas",
     "pip",
     "protobuf>=6.30.2",

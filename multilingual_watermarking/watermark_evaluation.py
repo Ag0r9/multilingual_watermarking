@@ -1,14 +1,15 @@
+from dataclasses import dataclass
+import json
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import numpy as np
+from sentence_transformers import SentenceTransformer
+import spacy
 import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from sentence_transformers import SentenceTransformer
-import numpy as np
-from typing import List, Dict, Tuple, Optional
-import pandas as pd
-from dataclasses import dataclass
-import spacy
-from pathlib import Path
-import json
+
 
 @dataclass
 class WatermarkResult:

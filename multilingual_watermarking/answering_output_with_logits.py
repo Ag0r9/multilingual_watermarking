@@ -4,16 +4,21 @@ This module provides functionality to generate text while tracking and modifying
 for watermarking purposes.
 """
 
+from pathlib import Path
+from typing import Optional, Tuple
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from pathlib import Path
-from typing import Tuple, Optional
 
-from multilingual_watermarking.logit_modification import (
-    LogitModificationTracker,
-    LogitModifier
-)
+from multilingual_watermarking.logit_modification import LogitModificationTracker, LogitModifier
 from multilingual_watermarking.paths import Paths
+from multilingual_watermarking.utils.embedding_and_paraphrase import (
+    compute_logprob,
+    cosine_similarity,
+    get_embedding,
+    paraphrase_text,
+    save_to_csv,
+)
 
 # Collection of prompts for text generation
 PROMPTS = [
@@ -40,7 +45,7 @@ PROMPTS = [
 ]
 
 # Model configuration
-MODEL_NAME = "speakleash/Bielik-7B-Instruct-v0.1"
+MODEL_NAME = "speakleash/Bielik-4.5B-v3.0-Instruct"
 BEGINNING_PROMPT = "Odpowiadaj krótko, precyzyjnie i wyłącznie w języku polskim. "
 
 
@@ -160,11 +165,12 @@ def main():
     print(f"Loading model: {MODEL_NAME}")
     
     # Setup model and tokenizer
-    model, tokenizer, device = setup_model_and_tokenizer()
     paths = Paths()
+    model, tokenizer, device = setup_model_and_tokenizer()
     
     # List of watermark types to iterate over
     watermark_types = [
+        "none",  # No watermark (unmasked)
         "multiple_logits",
         "random_50",
         "adj_adv_90",
@@ -174,16 +180,58 @@ def main():
     
     for prompt_idx, prompt in enumerate(PROMPTS):
         prompt_text = BEGINNING_PROMPT + prompt
+        outputs = {}
         for watermark_type in watermark_types:
             print(f"\n=== Generating for prompt {prompt_idx} with watermark type: {watermark_type} ===")
             tracker = LogitModificationTracker()
             output_text = generate_text(
-                prompt_text, model, tokenizer, device, tracker, max_length=1000, watermark_type=watermark_type
+                prompt_text, model, tokenizer, device, tracker, max_length=300, watermark_type=watermark_type
             )
             # Save results
             output_file = paths.GENERATED_TEXT_DIR / f"output_{prompt_idx}_{watermark_type}.txt"
             save_output(output_text, output_file)
             tracker.save_history_to_csv(f"{prompt_idx}_{watermark_type}")
+            outputs[watermark_type] = output_text
+        unmasked_text = outputs["none"]
+        for masked_type in watermark_types:
+            if masked_type == "none":
+                continue
+            masked_text = outputs[masked_type]
+            try:
+                unmasked_emb = get_embedding(unmasked_text)
+                masked_emb = get_embedding(masked_text)
+                similarity = cosine_similarity(unmasked_emb, masked_emb)
+            except NotImplementedError:
+                similarity = None
+            try:
+                paraphrases = paraphrase_text(masked_text, n=5)
+            except NotImplementedError:
+                paraphrases = []
+            paraphrase_results = []
+            for para in paraphrases:
+                try:
+                    para_emb = get_embedding(para)
+                    para_similarity = cosine_similarity(unmasked_emb, para_emb)
+                except NotImplementedError:
+                    para_similarity = None
+                try:
+                    para_prob = compute_logprob(para, prompt_text, model, tokenizer, device, tracker, masked_type)
+                except NotImplementedError:
+                    para_prob = None
+                paraphrase_results.append({
+                    "paraphrase": para,
+                    "similarity": para_similarity,
+                    "probability": para_prob
+                })
+            save_to_csv({
+                "prompt": prompt,
+                "unmasked": unmasked_text,
+                "masked": masked_text,
+                "similarity": similarity,
+                "paraphrases": paraphrase_results,
+                "watermark_type": masked_type,
+                "prompt_idx": prompt_idx
+            })
 
 if __name__ == "__main__":
     main()

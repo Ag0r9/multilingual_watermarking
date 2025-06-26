@@ -1,6 +1,6 @@
-from pathlib import Path
-from watermark_evaluation import WatermarkEvaluator
 from paths import Paths
+from watermark_evaluation import WatermarkEvaluator
+
 
 def main():
     # Initialize paths

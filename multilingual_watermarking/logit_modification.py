@@ -94,7 +94,6 @@ class LogitModifier:
         Returns:
             Modified logits
         """
-        tokens = self.tokenizer.encode(doc.text)
         adj_adv_indices = [
             i for i, token in enumerate(doc)
             if token.pos_ in ["ADJ", "ADV"]
@@ -120,7 +119,6 @@ class LogitModifier:
         Returns:
             Modified logits
         """
-        tokens = self.tokenizer.encode(doc.text)
         feminine_indices = [
             i for i, token in enumerate(doc)
             if token.morph.get("Gender") == ["Fem"]
@@ -146,7 +144,6 @@ class LogitModifier:
         Returns:
             Modified logits
         """
-        tokens = self.tokenizer.encode(doc.text)
         verb_comp_indices = [
             i for i, token in enumerate(doc)
             if token.pos_ in ["VERB", "AUX"] or token.dep_ in ["ccomp", "xcomp"]
@@ -194,11 +191,12 @@ class LogitModifier:
             - modified_logits: Modified logits
         """
         watermark_functions: Dict[str, Callable] = {
-            "multiple_logits": lambda l, d: self.multiple_logits(l, reduction_factor),
-            "random_50": lambda l, d: self.random_50(l, d, reduction_factor),
-            "adj_adv_90": lambda l, d: self.adj_adv_90(l, d, reduction_factor),
-            "feminine_90": lambda l, d: self.feminine_90(l, d, reduction_factor),
-            "verb_comp_90": lambda l, d: self.verb_comp_90(l, d, reduction_factor),
+            "multiple_logits": lambda logits, doc: self.multiple_logits(logits, reduction_factor),
+            "random_50": lambda logits, doc: self.random_50(logits, doc, reduction_factor),
+            "adj_adv_90": lambda logits, doc: self.adj_adv_90(logits, doc, reduction_factor),
+            "feminine_90": lambda logits, doc: self.feminine_90(logits, doc, reduction_factor),
+            "verb_comp_90": lambda logits, doc: self.verb_comp_90(logits, doc, reduction_factor),
+            "none": lambda logits, doc: logits,  # No modification
         }
 
         outputs = model(input_ids=generated, attention_mask=attention_mask)
@@ -207,7 +205,7 @@ class LogitModifier:
         current_text = self.tokenizer.decode(generated[0])
         doc = self.nlp(current_text)
 
-        watermark_func = watermark_functions.get(watermark_type, watermark_functions["multiple_logits"])
+        watermark_func = watermark_functions.get(watermark_type, watermark_functions["none"])
         modified_logits = watermark_func(original_logits, doc)
 
         next_token_id = torch.argmax(modified_logits, dim=-1).unsqueeze(-1)

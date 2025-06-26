@@ -3,11 +3,12 @@ Module for analyzing token probabilities in a language model output.
 This module provides functionality to calculate the probability of generating specific sequences.
 """
 
+from dataclasses import dataclass
+from typing import List, Tuple
+
 import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from typing import Dict, List, Tuple, Any
-from dataclasses import dataclass
 
 
 @dataclass
