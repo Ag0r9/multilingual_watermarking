@@ -1,10 +1,9 @@
-from typing import Tuple, Dict, Callable
 import random
+from typing import Callable, Dict, Tuple
+
 import pandas as pd
-import torch
-import torch.nn.functional as F
 import spacy
-from pathlib import Path
+import torch
 
 from multilingual_watermarking.paths import Paths, get_timestamp
 
@@ -56,7 +55,9 @@ class LogitModifier:
         self.tokenizer = tokenizer
         self.nlp = spacy.load("pl_core_news_lg")  # Load spaCy for POS tagging and gender detection
 
-    def multiple_logits(self, logits: torch.Tensor, multiplication_factor: float = 0.5) -> torch.Tensor:
+    def multiple_logits(
+        self, logits: torch.Tensor, multiplication_factor: float = 0.5
+    ) -> torch.Tensor:
         """
         Modify logits according to the specified factor.
         Args:
@@ -67,7 +68,9 @@ class LogitModifier:
         """
         return logits * multiplication_factor
 
-    def random_50(self, logits: torch.Tensor, doc: spacy.tokens.Doc, reduction_factor: float = 0.8) -> torch.Tensor:
+    def random_50(
+        self, logits: torch.Tensor, doc: spacy.tokens.Doc, reduction_factor: float = 0.8
+    ) -> torch.Tensor:
         """
         Apply random watermark to 50% of tokens.
         Args:
@@ -84,7 +87,9 @@ class LogitModifier:
             modified_logits[0, idx] *= reduction_factor
         return modified_logits
 
-    def adj_adv_90(self, logits: torch.Tensor, doc: spacy.tokens.Doc, reduction_factor: float = 0.8) -> torch.Tensor:
+    def adj_adv_90(
+        self, logits: torch.Tensor, doc: spacy.tokens.Doc, reduction_factor: float = 0.8
+    ) -> torch.Tensor:
         """
         Apply watermark to 90% of adjectives and adverbs.
         Args:
@@ -94,22 +99,30 @@ class LogitModifier:
         Returns:
             Modified logits
         """
-        adj_adv_indices = [
-            i for i, token in enumerate(doc)
-            if token.pos_ in ["ADJ", "ADV"]
-        ]
-        if not adj_adv_indices:
+        # Collect all adjectives and adverbs
+        selected_tokens = [token.text for token in doc if token.pos_ in ["ADJ", "ADV"]]
+        if not selected_tokens:
             return logits
-        mask_indices = random.sample(
-            adj_adv_indices,
-            k=int(len(adj_adv_indices) * 0.9)
-        )
+
+        # Randomly select 90% of them
+        k = max(1, int(len(selected_tokens) * 0.9))
+        tokens_to_modify = random.sample(selected_tokens, k=k)
+
+        # Get vocab IDs for all selected tokens
+        vocab_ids = set()
+        for word in tokens_to_modify:
+            token_ids = self.tokenizer.encode(word, add_special_tokens=False)
+            vocab_ids.update(token_ids)
+
+        # Reduce logits for these vocab IDs
         modified_logits = logits.clone()
-        for idx in mask_indices:
-            modified_logits[0, idx] *= reduction_factor
+        for vid in vocab_ids:
+            modified_logits[0, vid] *= reduction_factor
         return modified_logits
 
-    def feminine_90(self, logits: torch.Tensor, doc: spacy.tokens.Doc, reduction_factor: float = 0.8) -> torch.Tensor:
+    def feminine_90(
+        self, logits: torch.Tensor, doc: spacy.tokens.Doc, reduction_factor: float = 0.8
+    ) -> torch.Tensor:
         """
         Apply watermark to 90% of feminine gender words.
         Args:
@@ -119,22 +132,30 @@ class LogitModifier:
         Returns:
             Modified logits
         """
-        feminine_indices = [
-            i for i, token in enumerate(doc)
-            if token.morph.get("Gender") == ["Fem"]
-        ]
-        if not feminine_indices:
+        # Collect all feminine gender tokens
+        selected_tokens = [token.text for token in doc if token.morph.get("Gender") == ["Fem"]]
+        if not selected_tokens:
             return logits
-        mask_indices = random.sample(
-            feminine_indices,
-            k=int(len(feminine_indices) * 0.9)
-        )
+
+        # Randomly select 90% of them
+        k = max(1, int(len(selected_tokens) * 0.9))
+        tokens_to_modify = random.sample(selected_tokens, k=k)
+
+        # Get vocab IDs for all selected tokens
+        vocab_ids = set()
+        for word in tokens_to_modify:
+            token_ids = self.tokenizer.encode(word, add_special_tokens=False)
+            vocab_ids.update(token_ids)
+
+        # Reduce logits for these vocab IDs
         modified_logits = logits.clone()
-        for idx in mask_indices:
-            modified_logits[0, idx] *= reduction_factor
+        for vid in vocab_ids:
+            modified_logits[0, vid] *= reduction_factor
         return modified_logits
 
-    def verb_comp_90(self, logits: torch.Tensor, doc: spacy.tokens.Doc, reduction_factor: float = 0.8) -> torch.Tensor:
+    def verb_comp_90(
+        self, logits: torch.Tensor, doc: spacy.tokens.Doc, reduction_factor: float = 0.8
+    ) -> torch.Tensor:
         """
         Apply watermark to 90% of verbs and complements.
         Args:
@@ -144,19 +165,30 @@ class LogitModifier:
         Returns:
             Modified logits
         """
-        verb_comp_indices = [
-            i for i, token in enumerate(doc)
+        # Find spaCy tokens that are verbs, auxiliaries, or have ccomp/xcomp dependency
+        selected_tokens = [
+            token.text
+            for token in doc
             if token.pos_ in ["VERB", "AUX"] or token.dep_ in ["ccomp", "xcomp"]
         ]
-        if not verb_comp_indices:
+        if not selected_tokens:
             return logits
-        mask_indices = random.sample(
-            verb_comp_indices,
-            k=int(len(verb_comp_indices) * 0.9)
-        )
+
+        # Randomly select 90% of them
+        k = max(1, int(len(selected_tokens) * 0.9))
+        tokens_to_modify = random.sample(selected_tokens, k=k)
+
+        # Get vocab IDs for all selected tokens
+        vocab_ids = set()
+        for word in tokens_to_modify:
+            # Tokenizer may split a word into multiple tokens
+            token_ids = self.tokenizer.encode(word, add_special_tokens=False)
+            vocab_ids.update(token_ids)
+
+        # Reduce logits for these vocab IDs
         modified_logits = logits.clone()
-        for idx in mask_indices:
-            modified_logits[0, idx] *= reduction_factor
+        for vid in vocab_ids:
+            modified_logits[0, vid] *= reduction_factor
         return modified_logits
 
     def generate_output_with_logits(
@@ -168,7 +200,7 @@ class LogitModifier:
         tracker: LogitModificationTracker,
         position: int,
         watermark_type: str = "multiple_logits",
-        reduction_factor: float = 0.8
+        reduction_factor: float = 0.8,
     ) -> Tuple[torch.Tensor, torch.Tensor, int, torch.Tensor]:
         """
         Generate output from the model and track both original and modified logits.
@@ -221,7 +253,9 @@ class LogitModifier:
         attention_mask = torch.cat(
             [
                 attention_mask,
-                torch.ones((attention_mask.shape[0], 1), device=device, dtype=attention_mask.dtype),
+                torch.ones(
+                    (attention_mask.shape[0], 1), device=device, dtype=attention_mask.dtype
+                ),
             ],
             dim=1,
         )

@@ -23,3 +23,4 @@ class Paths(NamedTuple):
 
     GENERATED_TEXT_DIR = DATA_DIR / "generated_text"
     LOGITS_DIR = DATA_DIR / "logits"
+    RESULTS_DIR = DATA_DIR / "results"

@@ -12,13 +12,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from multilingual_watermarking.logit_modification import LogitModificationTracker, LogitModifier
 from multilingual_watermarking.paths import Paths
-from multilingual_watermarking.utils.embedding_and_paraphrase import (
-    compute_logprob,
-    cosine_similarity,
-    get_embedding,
-    paraphrase_text,
-    save_to_csv,
-)
+from multilingual_watermarking.utils.embedding_and_paraphrase import evaluate_and_save_paraphrases
 
 # Collection of prompts for text generation
 PROMPTS = [
@@ -50,16 +44,15 @@ BEGINNING_PROMPT = "Odpowiadaj krótko, precyzyjnie i wyłącznie w języku pols
 
 
 def setup_model_and_tokenizer(
-    model_name: str = MODEL_NAME,
-    device: Optional[str] = None
+    model_name: str = MODEL_NAME, device: Optional[str] = None
 ) -> Tuple[AutoModelForCausalLM, AutoTokenizer, torch.device]:
     """
     Initialize and setup the model and tokenizer.
-    
+
     Args:
         model_name: Name of the model to load
         device: Device to run the model on (if None, will use CUDA if available)
-        
+
     Returns:
         Tuple containing:
         - model: The loaded language model
@@ -68,18 +61,15 @@ def setup_model_and_tokenizer(
     """
     device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     print(f"Using device: {device}")
-    
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.bfloat16
-    ).to(device)
-    
+    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16).to(device)
+
     # Set pad token if not present
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = model.config.eos_token_id
-    
+
     return model, tokenizer, device
 
 
@@ -90,11 +80,11 @@ def generate_text(
     device: torch.device,
     tracker: LogitModificationTracker,
     max_length: int = 1000,
-    watermark_type: str = "multiple_logits"
+    watermark_type: str = "multiple_logits",
 ) -> str:
     """
     Generate text from the model while tracking logits.
-    
+
     Args:
         prompt: The input prompt
         model: The language model
@@ -102,7 +92,7 @@ def generate_text(
         device: The device to run on
         tracker: The logit modification tracker
         max_length: Maximum length of generated text
-        
+
     Returns:
         Generated text as string
     """
@@ -110,7 +100,7 @@ def generate_text(
     encoded_prompt = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
     input_ids = encoded_prompt["input_ids"].to(device)
     attention_mask = encoded_prompt["attention_mask"].to(device)
-    
+
     # Generate tokens
     generated = input_ids
     model.eval()
@@ -118,38 +108,40 @@ def generate_text(
     logit_modifier = LogitModifier(tokenizer=tokenizer)
     with torch.no_grad():
         for pos in range(max_length):
-            generated, attention_mask, next_token_id, modified_logits = logit_modifier.generate_output_with_logits(
-                model,
-                device,
-                generated,
-                attention_mask,
-                tracker,
-                position=pos,
-                watermark_type=watermark_type,  # Pass watermark type here
+            generated, attention_mask, next_token_id, modified_logits = (
+                logit_modifier.generate_output_with_logits(
+                    model,
+                    device,
+                    generated,
+                    attention_mask,
+                    tracker,
+                    position=pos,
+                    watermark_type=watermark_type,  # Pass watermark type here
+                )
             )
-            
+
             # Print progress
-            if pos % 10 == 0:
+            if pos % 100 == 0:
                 output_text = tokenizer.decode(generated[0], skip_special_tokens=True)
                 print(f"\nGenerated text so far: {output_text}")
-                
+
                 # Print token information
                 token_info = tracker.token_history[-1]
                 print(f"Token ID: {token_info['token_id']}")
                 print(f"Original logit: {token_info['original_logits'].max().item():.4f}")
                 print(f"Modified logit: {token_info['modified_logits'].max().item():.4f}")
-            
+
             # Stop if EOS token is generated
             if next_token_id.item() == tokenizer.eos_token_id:
                 break
-    
+
     return tokenizer.decode(generated[0], skip_special_tokens=True)
 
 
 def save_output(text: str, file_path: Path) -> None:
     """
     Save generated text to a file.
-    
+
     Args:
         text: The text to save
         file_path: Path where to save the text
@@ -163,75 +155,56 @@ def save_output(text: str, file_path: Path) -> None:
 def main():
     """Main function to run the text generation process."""
     print(f"Loading model: {MODEL_NAME}")
-    
+
     # Setup model and tokenizer
     paths = Paths()
     model, tokenizer, device = setup_model_and_tokenizer()
-    
+
     # List of watermark types to iterate over
     watermark_types = [
         "none",  # No watermark (unmasked)
-        "multiple_logits",
         "random_50",
         "adj_adv_90",
         "feminine_90",
-        "verb_comp_90"
+        "verb_comp_90",
     ]
-    
+
     for prompt_idx, prompt in enumerate(PROMPTS):
+        if prompt_idx >= 5:
+            return  # Limit to first 5 prompts for testing
         prompt_text = BEGINNING_PROMPT + prompt
         outputs = {}
         for watermark_type in watermark_types:
-            print(f"\n=== Generating for prompt {prompt_idx} with watermark type: {watermark_type} ===")
+            print(
+                f"\n=== Generating for prompt {prompt_idx} with watermark type: {watermark_type} ==="
+            )
             tracker = LogitModificationTracker()
             output_text = generate_text(
-                prompt_text, model, tokenizer, device, tracker, max_length=300, watermark_type=watermark_type
+                prompt_text,
+                model,
+                tokenizer,
+                device,
+                tracker,
+                max_length=300,
+                watermark_type=watermark_type,
             )
             # Save results
             output_file = paths.GENERATED_TEXT_DIR / f"output_{prompt_idx}_{watermark_type}.txt"
             save_output(output_text, output_file)
             tracker.save_history_to_csv(f"{prompt_idx}_{watermark_type}")
             outputs[watermark_type] = output_text
-        unmasked_text = outputs["none"]
-        for masked_type in watermark_types:
-            if masked_type == "none":
-                continue
-            masked_text = outputs[masked_type]
-            try:
-                unmasked_emb = get_embedding(unmasked_text)
-                masked_emb = get_embedding(masked_text)
-                similarity = cosine_similarity(unmasked_emb, masked_emb)
-            except NotImplementedError:
-                similarity = None
-            try:
-                paraphrases = paraphrase_text(masked_text, n=5)
-            except NotImplementedError:
-                paraphrases = []
-            paraphrase_results = []
-            for para in paraphrases:
-                try:
-                    para_emb = get_embedding(para)
-                    para_similarity = cosine_similarity(unmasked_emb, para_emb)
-                except NotImplementedError:
-                    para_similarity = None
-                try:
-                    para_prob = compute_logprob(para, prompt_text, model, tokenizer, device, tracker, masked_type)
-                except NotImplementedError:
-                    para_prob = None
-                paraphrase_results.append({
-                    "paraphrase": para,
-                    "similarity": para_similarity,
-                    "probability": para_prob
-                })
-            save_to_csv({
-                "prompt": prompt,
-                "unmasked": unmasked_text,
-                "masked": masked_text,
-                "similarity": similarity,
-                "paraphrases": paraphrase_results,
-                "watermark_type": masked_type,
-                "prompt_idx": prompt_idx
-            })
+        evaluate_and_save_paraphrases(
+            prompt=prompt,
+            prompt_text=prompt_text,
+            outputs=outputs,
+            watermark_types=watermark_types,
+            model=model,
+            tokenizer=tokenizer,
+            device=device,
+            tracker=tracker,
+            prompt_idx=prompt_idx,
+        )
+
 
 if __name__ == "__main__":
     main()
