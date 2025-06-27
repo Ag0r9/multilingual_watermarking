@@ -12,7 +12,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from multilingual_watermarking.logit_modification import LogitModificationTracker, LogitModifier
 from multilingual_watermarking.paths import Paths
-from multilingual_watermarking.utils.embedding_and_paraphrase import evaluate_and_save_paraphrases
+from multilingual_watermarking.embedding_and_paraphrase import evaluate_and_save_paraphrases
 
 # Collection of prompts for text generation
 PROMPTS = [

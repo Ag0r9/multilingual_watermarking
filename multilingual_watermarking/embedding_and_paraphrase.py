@@ -5,6 +5,7 @@ from openai import OpenAI
 import pandas as pd
 
 from multilingual_watermarking.paths import Paths
+from multilingual_watermarking.check_logits import calculate_sequence_probability
 
 client = OpenAI()
 
@@ -34,7 +35,7 @@ def paraphrase_text(text: str, n: int = 5, model: str = "gpt-3.5-turbo") -> List
     paraphrases = []
     for _ in range(n):
         response = client.chat.completions.create(
-            model=model, messages=[{"role": "user", "content": f"Paraphrase this text: {text}"}]
+            model=model, messages=[{"role": "user", "content": f"Paraphrase the following text, preserving all information and structure: {text}"}]
         )
         paraphrases.append(response.choices[0].message.content)
     return paraphrases
@@ -49,6 +50,15 @@ def compute_logprob(
     """
     # This can be implemented similarly to calculate_sequence_probability in check_logits.py
     # (copy or import and adapt as needed)
+    return calculate_sequence_probability(
+        text=text,
+        prompt=prompt,
+        model=model,
+        tokenizer=tokenizer,
+        device=device,
+        tracker=tracker,
+        watermark_type=watermark_type,
+    )
     raise NotImplementedError("Implement log-probability calculation for the watermarked model.")
 
 
